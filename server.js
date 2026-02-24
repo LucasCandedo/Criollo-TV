@@ -27,9 +27,9 @@ const channels = [
     category: "Noticias",
     name: "TN",
     description: "Todo Noticias - Canal 24h de noticias",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TN_Todo_Noticias.svg/200px-TN_Todo_Noticias.svg.png",
-    youtubeHandle: "@tnoficial",
-    youtubeChannelId: "UCimi4_HyFgJc3pDGGR3oFsg",
+    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/4f/TN_todo_noticias_logo.svg/1280px-TN_todo_noticias_logo.svg.png",
+    youtubeHandle: "@todonoticias",
+    youtubeChannelId: "UCyS7HkaIUX2FBJkJUsnFZUA",
     color: "#e30613"
   },
   {
