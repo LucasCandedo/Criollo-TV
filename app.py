@@ -136,7 +136,6 @@ async def main(page: ft.Page):
     # VISTA PLAYER
     # ==========================================================
     def vista_player(route_parts):
-
         if len(route_parts) < 4:
             return vista_home()
 
