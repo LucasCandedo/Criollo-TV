@@ -4,38 +4,21 @@ from scraper import (
     obtener_youtube_id_from_page,
     obtener_stream_desde_canal_youtube,
 )
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 
 async def main(page: ft.Page):
     page.title = "CriolloTV"
     page.bgcolor = "#141414"
-    page.padding = 20
+    page.padding = 0
+    page.spacing = 0
+    page.theme_mode = ft.ThemeMode.DARK
 
-    if page.url.startswith("ws://"):
-        base_url = page.url.replace("ws://", "https://").rstrip("/")
-    elif page.url.startswith("wss://"):
-        base_url = page.url.replace("wss://", "https://").rstrip("/")
-    else:
-        base_url = page.url.rstrip("/")
-
-    # -------------------------
-    # ABRIR PLAYER
-    # -------------------------
-    async def abrir_player(video_id, nombre):
-        nombre_encoded = quote(nombre, safe="")
-
-        url = f"{base_url}/assets/player.html?v={video_id}&name={nombre_encoded}&back={base_url}"
-
-        await page.launch_url(
-            url,
-            web_popup_window_name="_self",
-        )
-
-    # -------------------------
-    # REPRODUCIR CANAL
-    # -------------------------
+    # ==========================================================
+    # REPRODUCIR CANAL (OBTENER VIDEO ID)
+    # ==========================================================
     async def reproducir_canal(nombre_canal):
+
         canal = None
 
         for section in CHANNEL_SECTIONS.values():
@@ -69,11 +52,13 @@ async def main(page: ft.Page):
 
         print("✓ Video en vivo encontrado:", video_id)
 
-        await abrir_player(video_id, nombre_canal)
+        nombre_encoded = quote(nombre_canal, safe="")
 
-    # -------------------------
+        page.go(f"/player/{nombre_encoded}/{video_id}")
+
+    # ==========================================================
     # TARJETA CANAL
-    # -------------------------
+    # ==========================================================
     def tarjeta_canal(nombre, data):
         return ft.Container(
             width=220,
@@ -82,7 +67,9 @@ async def main(page: ft.Page):
             border_radius=12,
             padding=10,
             data=nombre,
-            on_click=lambda e: page.run_task(reproducir_canal, e.control.data),
+            on_click=lambda e: page.run_task(
+                reproducir_canal, e.control.data
+            ),
             content=ft.Column(
                 [
                     ft.Image(src=data["logo"], height=100),
@@ -98,15 +85,15 @@ async def main(page: ft.Page):
             ),
         )
 
-    # -------------------------
-    # GRILLA
-    # -------------------------
-    def mostrar_grilla():
-        page.controls.clear()
+    # ==========================================================
+    # VISTA HOME
+    # ==========================================================
+    def vista_home():
 
         contenido = []
 
         for seccion, canales in CHANNEL_SECTIONS.items():
+
             contenido.append(
                 ft.Text(
                     seccion,
@@ -119,6 +106,7 @@ async def main(page: ft.Page):
             tarjetas = [
                 tarjeta_canal(nombre, data)
                 for nombre, data in canales.items()
+                if data.get("enabled", True)
             ]
 
             contenido.append(
@@ -130,14 +118,100 @@ async def main(page: ft.Page):
                 )
             )
 
-        page.add(ft.Column(contenido, scroll="auto", expand=True))
+        return ft.View(
+            "/",
+            [
+                ft.Container(
+                    content=ft.Column(
+                        contenido,
+                        scroll="auto",
+                        expand=True,
+                    ),
+                    padding=20,
+                )
+            ],
+        )
+
+    # ==========================================================
+    # VISTA PLAYER
+    # ==========================================================
+    def vista_player(route_parts):
+
+        if len(route_parts) < 4:
+            return vista_home()
+
+        nombre = unquote(route_parts[2])
+        video_id = route_parts[3]
+
+        youtube_embed = (
+            f"https://www.youtube.com/embed/"
+            f"{video_id}"
+            f"?autoplay=1&mute=1&playsinline=1&rel=0"
+        )
+
+        return ft.View(
+            f"/player/{route_parts[2]}/{video_id}",
+            [
+                ft.Stack(
+                    [
+                        ft.WebView(
+                            url=youtube_embed,
+                            expand=True,
+                        ),
+                        ft.Container(
+                            content=ft.Row(
+                                [
+                                    ft.IconButton(
+                                        icon=ft.Icons.ARROW_BACK,
+                                        icon_color="white",
+                                        on_click=lambda _: page.go("/"),
+                                    ),
+                                    ft.Text(
+                                        nombre,
+                                        color="white",
+                                        size=20,
+                                        weight=ft.FontWeight.BOLD,
+                                    ),
+                                ],
+                                vertical_alignment=ft.CrossAxisAlignment.CENTER,
+                            ),
+                            bgcolor="#000000aa",
+                            padding=20,
+                        ),
+                    ],
+                    expand=True,
+                )
+            ],
+            padding=0,
+        )
+
+    # ==========================================================
+    # ROUTING
+    # ==========================================================
+    def route_change(e: ft.RouteChangeEvent):
+
+        page.views.clear()
+
+        route_parts = page.route.split("/")
+
+        if page.route == "/":
+            page.views.append(vista_home())
+
+        elif page.route.startswith("/player"):
+            page.views.append(vista_home())  # base
+            page.views.append(vista_player(route_parts))
+
+        else:
+            page.views.append(vista_home())
+
         page.update()
 
-    mostrar_grilla()
+    page.on_route_change = route_change
+    page.go(page.route)
 
 
-ft.run(
-    main,
+ft.app(
+    target=main,
     assets_dir="assets",
     port=8080,
     view=ft.AppView.WEB_BROWSER,
