@@ -12,7 +12,12 @@ async def main(page: ft.Page):
     page.bgcolor = "#141414"
     page.padding = 20
 
-    base_url = page.url.rstrip("/")
+    if page.url.startswith("ws://"):
+        base_url = page.url.replace("ws://", "https://").rstrip("/")
+    elif page.url.startswith("wss://"):
+        base_url = page.url.replace("wss://", "https://").rstrip("/")
+    else:
+        base_url = page.url.rstrip("/")
 
     # -------------------------
     # ABRIR PLAYER
