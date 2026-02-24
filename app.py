@@ -497,4 +497,4 @@ async def main(page: ft.Page):
     mostrar_grilla()
 
 
-ft.app(main, assets_dir="assets",)
+ft.app(main, assets_dir="assets", view=ft.AppView.WEB_BROWSER, port=8080)

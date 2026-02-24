@@ -17,4 +17,4 @@ COPY . .
 
 EXPOSE 8080
 
-CMD ["flet", "run", "--web", "--port", "8080", "app.py"]
+CMD ["python", "app.py"]
