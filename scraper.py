@@ -341,7 +341,7 @@ def obtener_calidades(video_id: str) -> Dict[str, str]:
                 protocol = formato.get('protocol', '')
                 
                 # Filtrar por calidades específicas y protocolos de streaming
-                if height in (360, 480, 720, 1080):
+                if height and height >= 360:
                     if 'm3u8' in protocol or 'https' in protocol:
                         key = f"{height}p"
                         if key not in calidades:  # Primera URL de cada calidad
