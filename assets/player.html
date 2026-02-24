@@ -1,40 +1,127 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Player</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>CriolloTV Player</title>
 
 <style>
-body {
-  margin: 0;
-  background: black;
-  overflow: hidden;
+html, body {
+    margin: 0;
+    padding: 0;
+    background: black;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    font-family: Arial, Helvetica, sans-serif;
 }
 
-iframe {
-  position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  border: none;
+#player {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    border: 0;
+}
+
+/* barra superior estilo TV */
+.topbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 70px;
+    background: rgba(0,0,0,0.65);
+    display: flex;
+    align-items: center;
+    padding: 0 20px;
+    color: white;
+    z-index: 5;
+    transition: opacity .3s;
+}
+
+.title {
+    font-size: 22px;
+    font-weight: bold;
+}
+
+.back {
+    margin-right: 20px;
+    cursor: pointer;
+    font-size: 22px;
+}
+
+/* ocultar controles automáticamente */
+.hidden {
+    opacity: 0;
 }
 </style>
 </head>
 
 <body>
 
+<div id="topbar" class="topbar">
+    <div class="back" id="backBtn">⬅</div>
+    <div id="title" class="title">Cargando...</div>
+</div>
+
 <iframe id="player" allow="autoplay; encrypted-media" allowfullscreen></iframe>
 
 <script>
 const params = new URLSearchParams(window.location.search);
+
 const videoId = params.get("v");
+const name = params.get("name") || "Canal";
+const back = params.get("back") || "/";
+
+const iframe = document.getElementById("player");
+const title = document.getElementById("title");
+const topbar = document.getElementById("topbar");
+
+title.textContent = decodeURIComponent(name);
 
 if (videoId) {
-  document.getElementById("player").src =
-    "https://www.youtube.com/embed/" + videoId + "?autoplay=1&playsinline=1";
+    iframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1&playsinline=1&mute=0`;
+} else {
+    console.log("No se recibió video ID");
 }
+
+/* volver */
+function goBack() {
+    window.location.href = back;
+}
+
+document.getElementById("backBtn").onclick = goBack;
+
+/* Soporte botón BACK Android TV */
+window.addEventListener("keydown", (e) => {
+    if (e.key === "Backspace" || e.key === "Escape" || e.keyCode === 461) {
+        goBack();
+    }
+});
+
+/* mostrar controles al mover control remoto o mouse */
+let hideTimer;
+
+function showControls() {
+    topbar.classList.remove("hidden");
+
+    clearTimeout(hideTimer);
+    hideTimer = setTimeout(() => {
+        topbar.classList.add("hidden");
+    }, 4000);
+}
+
+document.addEventListener("mousemove", showControls);
+document.addEventListener("keydown", showControls);
+document.addEventListener("touchstart", showControls);
+
+/* iniciar ocultado automático */
+showControls();
+
+/* evitar que Railway o navegador redireccione */
+window.history.replaceState({}, "", window.location.href);
 </script>
 
 </body>
