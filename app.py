@@ -154,8 +154,8 @@ async def main(page: ft.Page):
             [
                 ft.Stack(
                     [
-                        ft.WebView(
-                            url=youtube_embed,
+                        ft.IFrame(
+                            src=youtube_embed,
                             expand=True,
                         ),
                         ft.Container(
