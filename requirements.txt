@@ -1,6 +1,0 @@
-flet==0.80.5
-flet-video==0.80.5
-requests
-beautifulsoup4
-yt-dlp
-flet-webview==0.80.5
