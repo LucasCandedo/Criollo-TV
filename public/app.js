@@ -1,58 +1,43 @@
 // ============================================================
-// CRIOLLOTV - M3U IPTV PWA para Android TV
+// CRIOLLOTV - M3U IPTV PWA  (client-side M3U fetch)
 // ============================================================
 
-const API = '/api/channels';
 let hlsInstance = null;
 let currentHWID = null;
-let isAdmin = false;
+let isAdmin     = false;
 
 const state = {
-  channels: [],
-  filtered: [],
+  channels:   [],
+  filtered:   [],
   currentCat: 'all',
-  currentChannel: null,
-  focusGrid: [],
-  focusRow: 0,
-  focusCol: 0,
-  inPlayer: false,
-  favorites: JSON.parse(localStorage.getItem('criollo-favs') || '[]'),
+  lastError:  null,
+  focusGrid:  [],
+  focusRow:   0,
+  focusCol:   0,
+  inPlayer:   false,
+  favorites:  JSON.parse(localStorage.getItem('criollo-favs') || '[]'),
 };
 
 // ============================================================
-// HWID - Identificador de dispositivo persistente
+// HWID
 // ============================================================
 function getHWID() {
   let hwid = localStorage.getItem('criollo-hwid');
   if (!hwid) {
-    // Generar HWID basado en fingerprint del navegador
     const canvas = document.createElement('canvas');
-    const gl = canvas.getContext('webgl');
-    const debugInfo = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
-    const renderer = debugInfo ? gl.getParameter(debugInfo.UNMASKED_RENDERER_WEBGL) : '';
-    const vendor   = debugInfo ? gl.getParameter(debugInfo.UNMASKED_VENDOR_WEBGL) : '';
-
+    const gl     = canvas.getContext('webgl');
+    const dbg    = gl ? gl.getExtension('WEBGL_debug_renderer_info') : null;
     const raw = [
-      navigator.userAgent,
-      navigator.language,
-      screen.width + 'x' + screen.height,
-      screen.colorDepth,
+      navigator.userAgent, navigator.language,
+      screen.width + 'x' + screen.height, screen.colorDepth,
       Intl.DateTimeFormat().resolvedOptions().timeZone,
-      renderer,
-      vendor,
+      dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : '',
+      dbg ? gl.getParameter(dbg.UNMASKED_VENDOR_WEBGL)   : '',
       navigator.hardwareConcurrency || '',
     ].join('|');
-
-    // Hash simple
     let hash = 0;
-    for (let i = 0; i < raw.length; i++) {
-      hash = ((hash << 5) - hash) + raw.charCodeAt(i);
-      hash |= 0;
-    }
-    // Convertir a hex positivo + sufijo aleatorio para unicidad
-    const hex = Math.abs(hash).toString(16).padStart(8, '0');
-    const rand = Math.random().toString(36).slice(2, 6);
-    hwid = `criollo-${hex}-${rand}`;
+    for (let i = 0; i < raw.length; i++) { hash = ((hash << 5) - hash) + raw.charCodeAt(i); hash |= 0; }
+    hwid = `criollo-${Math.abs(hash).toString(16).padStart(8,'0')}-${Math.random().toString(36).slice(2,6)}`;
     localStorage.setItem('criollo-hwid', hwid);
   }
   return hwid;
@@ -66,130 +51,188 @@ async function checkAdminStatus() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ hwid: currentHWID })
     });
-    const data = await r.json();
-    isAdmin = data.isAdmin;
-  } catch (e) {
-    isAdmin = false;
-  }
+    isAdmin = (await r.json()).isAdmin;
+  } catch (e) { isAdmin = false; }
 
-  // Mostrar/ocultar botón admin según resultado
-  const adminBtn = document.getElementById('btn-admin');
-  if (adminBtn) {
-    adminBtn.style.display = isAdmin ? 'flex' : 'none';
-  }
+  // Botón admin solo visible para admins
+  const btn = document.getElementById('btn-admin');
+  if (btn) btn.style.display = isAdmin ? 'flex' : 'none';
 }
 
 // ============================================================
-// INIT
-// ============================================================
-async function init() {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/sw.js').catch(console.error);
-  }
-
-  // Verificar admin en paralelo con carga de canales
-  await Promise.all([
-    checkAdminStatus(),
-    loadChannels()
-  ]);
-
-  renderAll();
-  setupNav();
-  setupRemote();
-  setupSearch();
-  setupBottomNav();
-  setupAdmin();
-  setupHWIDShortcut();
-
-  setTimeout(() => focusFirst(), 300);
-}
-
-// ============================================================
-// HWID SHORTCUT - Ctrl + I + O
+// HWID SHORTCUT  Ctrl + I + O  — solo muestra diagnóstico a admins
 // ============================================================
 function setupHWIDShortcut() {
   const pressed = new Set();
-
-  document.addEventListener('keydown', (e) => {
+  document.addEventListener('keydown', e => {
     pressed.add(e.key.toLowerCase());
-
-    if (pressed.has('control') && pressed.has('i') && pressed.has('o')) {
-      showHWIDPopup();
-    }
+    if (pressed.has('control') && pressed.has('i') && pressed.has('o')) showHWIDPopup();
   });
-
-  document.addEventListener('keyup', (e) => {
-    pressed.delete(e.key.toLowerCase());
-  });
+  document.addEventListener('keyup', e => pressed.delete(e.key.toLowerCase()));
 }
 
 function showHWIDPopup() {
-  // Remover popup anterior si existe
   const existing = document.getElementById('hwid-popup');
   if (existing) { existing.remove(); return; }
 
   const popup = document.createElement('div');
   popup.id = 'hwid-popup';
   popup.style.cssText = `
-    position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%);
-    background: #0d0d1e; border: 2px solid #1565c0;
-    border-radius: 12px; padding: 20px 28px;
-    z-index: 500; text-align: center;
-    box-shadow: 0 0 30px rgba(21,101,192,0.5);
-    min-width: 360px;
-  `;
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    background:#0d0d1e;border:2px solid #1565c0;border-radius:12px;
+    padding:20px 28px;z-index:500;text-align:center;
+    box-shadow:0 0 30px rgba(21,101,192,0.5);min-width:380px;max-width:90vw;`;
+
+  // Contenido base: siempre muestra el HWID
+  let extraInfo = '';
+  if (isAdmin) {
+    // Admin ve diagnóstico completo
+    const cfg = state._lastConfig || {};
+    extraInfo = `
+      <div style="margin-top:14px;text-align:left;background:#0a0a1a;border-radius:8px;padding:12px;font-size:12px;color:#888;">
+        <div style="color:#90caf9;font-weight:700;margin-bottom:8px;">📊 Diagnóstico (solo admin)</div>
+        <div>🔗 M3U URL: <span style="color:#fff;word-break:break-all;">${cfg.m3uUrl || '—'}</span></div>
+        <div style="margin-top:4px;">📺 Canales cargados: <span style="color:#fff;">${state.channels.length}</span></div>
+        <div style="margin-top:4px;">❌ Último error: <span style="color:#ef9a9a;">${state.lastError || 'ninguno'}</span></div>
+        <div style="margin-top:4px;">⚙️ Admin HWIDs: <span style="color:#fff;">configurados en Railway</span></div>
+        <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap;">
+          <a href="/api/debug" target="_blank" 
+            style="color:#90caf9;font-size:11px;border:1px solid #1565c0;border-radius:4px;padding:3px 8px;text-decoration:none;">
+            /api/debug
+          </a>
+        </div>
+      </div>`;
+  } else {
+    extraInfo = `<div style="color:#555;font-size:11px;margin-top:8px;">Enviá este código al administrador para obtener acceso admin</div>`;
+  }
+
   popup.innerHTML = `
     <div style="color:#90caf9;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">Tu HWID</div>
-    <div style="color:white;font-size:18px;font-family:monospace;letter-spacing:2px;margin-bottom:12px;">${currentHWID}</div>
-    <div style="color:#555;font-size:11px;margin-bottom:14px;">Enviá este código al administrador para obtener acceso admin</div>
-    <button onclick="navigator.clipboard.writeText('${currentHWID}').then(()=>{ this.textContent='✅ Copiado!'; setTimeout(()=>this.textContent='📋 Copiar',1500) })" 
-      style="background:#1565c0;color:white;border:none;border-radius:6px;padding:8px 20px;cursor:pointer;font-size:13px;">
-      📋 Copiar
-    </button>
-    <button onclick="document.getElementById('hwid-popup').remove()"
-      style="background:transparent;color:#666;border:1px solid #333;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;margin-left:8px;">
-      Cerrar
-    </button>
-  `;
-  document.body.appendChild(popup);
+    <div style="color:white;font-size:15px;font-family:monospace;letter-spacing:1px;margin-bottom:4px;word-break:break-all;">${currentHWID}</div>
+    ${extraInfo}
+    <div style="margin-top:14px;display:flex;gap:8px;justify-content:center;">
+      <button onclick="navigator.clipboard.writeText('${currentHWID}').then(()=>{this.textContent='✅ Copiado!';setTimeout(()=>this.textContent='📋 Copiar',1500)})"
+        style="background:#1565c0;color:white;border:none;border-radius:6px;padding:8px 20px;cursor:pointer;font-size:13px;">📋 Copiar</button>
+      <button onclick="document.getElementById('hwid-popup').remove()"
+        style="background:transparent;color:#666;border:1px solid #333;border-radius:6px;padding:8px 16px;cursor:pointer;font-size:13px;">Cerrar</button>
+    </div>`;
 
-  // Auto-cerrar después de 15 segundos
-  setTimeout(() => popup.remove(), 15000);
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 20000);
 }
 
 // ============================================================
-// DATA
+// M3U — descarga y parseo en el browser
 // ============================================================
+function parseM3U(text) {
+  const channels = [];
+  const lines    = text.split(/\r?\n/);
+  let current    = null;
+
+  for (const rawLine of lines) {
+    const line = rawLine.trim();
+    if (!line) continue;
+
+    if (line.startsWith('#EXTINF:')) {
+      const tvgName    = (line.match(/tvg-name="([^"]*)"/)?.[1] || '').trim();
+      const tvgLogo    = (line.match(/tvg-logo="([^"]*)"/)?.[1] || '').trim();
+      const group      = (line.match(/group-title="([^"]*)"/)?.[1] || 'General').trim();
+      const commaIdx   = line.lastIndexOf(',');
+      const displayName = commaIdx >= 0 ? line.slice(commaIdx + 1).trim() : tvgName;
+      current = {
+        name:     displayName || tvgName || 'Canal',
+        logo:     tvgLogo || null,
+        category: group || 'General',
+      };
+    } else if (!line.startsWith('#') && current) {
+      current.url = line;
+      current.id  = channels.length + 1;
+      channels.push(current);
+      current = null;
+    }
+  }
+  return channels;
+}
+
+async function fetchM3U(url) {
+  // Intentar fetch directo (funciona si el servidor IPTV tiene CORS abierto)
+  try {
+    const r = await fetch(url, { mode: 'cors' });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const text = await r.text();
+    if (text.includes('#EXTINF') || text.includes('#EXTM3U')) return text;
+    throw new Error('Respuesta no es M3U: ' + text.slice(0, 80));
+  } catch (corsErr) {
+    // Si falla por CORS, intentar vía proxy CORS público
+    console.warn('[m3u] fetch directo falló, intentando proxy CORS:', corsErr.message);
+    const proxies = [
+      `https://corsproxy.io/?${encodeURIComponent(url)}`,
+      `https://api.allorigins.win/raw?url=${encodeURIComponent(url)}`,
+    ];
+    for (const proxy of proxies) {
+      try {
+        const r = await fetch(proxy);
+        if (!r.ok) continue;
+        const text = await r.text();
+        if (text.includes('#EXTINF') || text.includes('#EXTM3U')) {
+          console.log('[m3u] Proxy funcionó:', proxy.split('?')[0]);
+          return text;
+        }
+      } catch (e) {
+        console.warn('[m3u] Proxy falló:', e.message);
+      }
+    }
+    throw new Error('No se pudo descargar el M3U (CORS bloqueado y proxies fallaron)');
+  }
+}
+
 async function loadChannels() {
   const loadingEl = document.getElementById('channels-loading');
   if (loadingEl) loadingEl.style.display = 'flex';
+  state.lastError = null;
 
   try {
-    const r = await fetch(API);
-    const data = await r.json();
-    if (data.success && Array.isArray(data.channels) && data.channels.length > 0) {
-      state.channels = data.channels;
-      console.log(`✅ ${data.channels.length} canales cargados`);
-    } else {
-      console.warn('Sin canales:', data);
-      state.channels = [];
+    // 1. Obtener URL del M3U desde el servidor
+    const cfgRes = await fetch('/api/config');
+    const cfg    = await cfgRes.json();
+    state._lastConfig = cfg;
+    const m3uUrl = cfg.m3uUrl;
+
+    if (!m3uUrl) throw new Error('No hay URL de M3U configurada');
+
+    console.log('[m3u] Descargando desde:', m3uUrl);
+
+    // 2. Descargar M3U desde el browser (evita restricciones de Railway)
+    const raw = await fetchM3U(m3uUrl);
+
+    // 3. Parsear
+    state.channels = parseM3U(raw);
+    console.log(`✅ ${state.channels.length} canales cargados`);
+
+    if (state.channels.length === 0) {
+      state.lastError = 'El M3U se descargó pero no contiene canales válidos';
     }
+
   } catch (e) {
-    console.error('Error loading channels:', e);
-    state.channels = [];
+    state.channels  = [];
+    state.lastError = e.message;
+    console.error('[loadChannels]', e.message);
   }
 
   state.filtered = state.channels;
   if (loadingEl) loadingEl.style.display = 'none';
 }
 
+// ============================================================
+// DATA HELPERS
+// ============================================================
 function getCategories() {
   return ['all', ...new Set(state.channels.map(c => c.category))];
 }
 
 function filterByCategory(cat) {
   state.currentCat = cat;
-  state.filtered = cat === 'all'
+  state.filtered   = cat === 'all'
     ? state.channels
     : state.channels.filter(c => c.category === cat);
   renderRows();
@@ -199,18 +242,14 @@ function filterByCategory(cat) {
 // ============================================================
 // RENDER
 // ============================================================
-function renderAll() {
-  renderNav();
-  renderRows();
-}
+function renderAll() { renderNav(); renderRows(); }
 
 function renderNav() {
-  const cats = getCategories();
   const navEl = document.querySelector('.header-nav');
   navEl.innerHTML = '';
-  cats.forEach(cat => {
+  getCategories().forEach(cat => {
     const btn = document.createElement('button');
-    btn.className = 'nav-btn focusable' + (cat === state.currentCat ? ' active' : '');
+    btn.className   = 'nav-btn focusable' + (cat === state.currentCat ? ' active' : '');
     btn.dataset.cat = cat;
     btn.textContent = cat === 'all' ? 'Todos' : cat;
     btn.addEventListener('click', () => {
@@ -227,12 +266,26 @@ function renderRows() {
   container.innerHTML = '';
 
   if (state.channels.length === 0) {
+    const err = state.lastError || 'No se encontraron canales';
     container.innerHTML = `
-      <div style="text-align:center;padding:80px 0;color:#666;">
+      <div style="text-align:center;padding:60px 40px;color:#666;max-width:600px;margin:0 auto;">
         <div style="font-size:48px;margin-bottom:16px;">📡</div>
-        <div style="font-size:20px;margin-bottom:8px;color:#aaa;">No se encontraron canales</div>
-        <div style="font-size:14px;color:#555;">Verificá el link M3U desde el panel de administración</div>
-        <div style="font-size:12px;color:#444;margin-top:8px;">Presioná Ctrl+I+O para ver tu HWID</div>
+        <div style="font-size:18px;margin-bottom:12px;color:#aaa;">Sin canales disponibles</div>
+        <div style="font-size:13px;color:#e57373;background:rgba(229,115,115,0.08);
+          border:1px solid rgba(229,115,115,0.25);border-radius:8px;
+          padding:12px 16px;margin-bottom:16px;text-align:left;word-break:break-all;">
+          ⚠️ ${err}
+        </div>
+        <div style="font-size:12px;color:#555;margin-bottom:20px;">
+          ${isAdmin
+            ? `Revisá el link M3U en el panel ⚙️ o presioná <kbd style="background:#222;padding:2px 6px;border-radius:4px;">Ctrl+I+O</kbd> para diagnóstico.`
+            : `Presioná <kbd style="background:#222;padding:2px 6px;border-radius:4px;">Ctrl+I+O</kbd> para ver tu HWID.`
+          }
+        </div>
+        <button onclick="location.reload()"
+          style="background:#1565c0;color:white;border:none;border-radius:8px;padding:10px 24px;cursor:pointer;font-size:14px;">
+          🔄 Reintentar
+        </button>
       </div>`;
     return;
   }
@@ -243,45 +296,36 @@ function renderRows() {
       if (!byCategory[ch.category]) byCategory[ch.category] = [];
       byCategory[ch.category].push(ch);
     });
-    Object.entries(byCategory).forEach(([cat, channels]) => {
-      renderRow(container, cat, channels);
-    });
+    Object.entries(byCategory).forEach(([cat, chs]) => renderRow(container, cat, chs));
   } else {
     renderRow(container, state.currentCat, state.filtered);
   }
-
   rebuildFocusGrid();
 }
 
 function renderRow(container, title, channels) {
-  const row = document.createElement('div');
+  const row    = document.createElement('div');
   row.className = 'channel-row';
-
   const titleEl = document.createElement('div');
   titleEl.className = 'row-title';
   titleEl.innerHTML = `<span>${title}</span>`;
-
   const scroll = document.createElement('div');
   scroll.className = 'cards-scroll';
-
   channels.forEach(ch => scroll.appendChild(createCard(ch)));
-
   row.appendChild(titleEl);
   row.appendChild(scroll);
   container.appendChild(row);
 }
 
 function createCard(ch) {
-  const card = document.createElement('div');
+  const card     = document.createElement('div');
   card.className = 'channel-card focusable';
-  card.tabIndex = 0;
+  card.tabIndex  = 0;
   card.dataset.id = ch.id;
-
-  const isFav = state.favorites.includes(ch.id);
-
+  const isFav    = state.favorites.includes(ch.id);
   card.innerHTML = `
     <div class="card-inner">
-      <div class="card-bg" style="background: linear-gradient(135deg, #1a237e, #0d47a1);"></div>
+      <div class="card-bg" style="background:linear-gradient(135deg,#1a237e,#0d47a1);"></div>
       <div class="card-gradient"></div>
       ${ch.logo ? `<div class="card-logo"><img src="${ch.logo}" alt="${ch.name}" loading="lazy" onerror="this.style.display='none'"></div>` : ''}
       <div class="card-info">
@@ -291,80 +335,65 @@ function createCard(ch) {
       <div class="card-live-dot"></div>
       ${isFav ? '<div style="position:absolute;top:8px;right:8px;font-size:16px;">⭐</div>' : ''}
     </div>`;
-
   card.addEventListener('click', () => playChannel(ch));
   card.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); playChannel(ch); }
   });
-
   return card;
 }
 
 // ============================================================
-// PLAYER - HLS
+// PLAYER
 // ============================================================
 function playChannel(ch) {
-  state.currentChannel = ch;
   state.inPlayer = true;
-
-  const overlay  = document.getElementById('player-overlay');
-  const video    = document.getElementById('hls-player');
-  const loading  = document.getElementById('player-loading');
-  const titleEl  = document.getElementById('player-title');
-  const nameEl   = document.getElementById('player-channel-name');
-  const descEl   = document.getElementById('player-channel-desc');
+  const overlay = document.getElementById('player-overlay');
+  const video   = document.getElementById('hls-player');
+  const loading = document.getElementById('player-loading');
 
   overlay.classList.remove('hidden');
   loading.style.display = 'flex';
-  loading.innerHTML = '<div class="spinner"></div><p>Cargando transmisión...</p>';
-  video.style.display = 'none';
+  loading.innerHTML     = '<div class="spinner"></div><p>Cargando transmisión...</p>';
+  video.style.display   = 'none';
 
-  titleEl.textContent = ch.name;
-  nameEl.textContent  = ch.name;
-  descEl.textContent  = ch.category;
+  document.getElementById('player-title').textContent        = ch.name;
+  document.getElementById('player-channel-name').textContent = ch.name;
+  document.getElementById('player-channel-desc').textContent = ch.category;
 
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   video.src = '';
 
-  const url = ch.url;
-  if (!url) {
+  if (!ch.url) {
     loading.innerHTML = '<p style="color:#ef5350">Sin URL de stream</p>';
     return;
   }
 
-  if (Hls.isSupported()) {
+  if (typeof Hls !== 'undefined' && Hls.isSupported()) {
     hlsInstance = new Hls({ enableWorker: true, maxBufferLength: 30 });
-    hlsInstance.loadSource(url);
+    hlsInstance.loadSource(ch.url);
     hlsInstance.attachMedia(video);
     hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
-      loading.style.display = 'none';
-      video.style.display = 'block';
+      loading.style.display = 'none'; video.style.display = 'block';
       video.play().catch(console.error);
     });
-    hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+    hlsInstance.on(Hls.Events.ERROR, (_, data) => {
       if (data.fatal) {
         loading.innerHTML = `<p style="color:#ef5350">Error al reproducir</p><small style="color:#777">${data.type}: ${data.details}</small>`;
-        loading.style.display = 'flex';
-        video.style.display = 'none';
+        loading.style.display = 'flex'; video.style.display = 'none';
       }
     });
   } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-    video.src = url;
+    video.src = ch.url;
     video.addEventListener('loadedmetadata', () => {
-      loading.style.display = 'none';
-      video.style.display = 'block';
-      video.play().catch(console.error);
+      loading.style.display = 'none'; video.style.display = 'block'; video.play().catch(console.error);
     }, { once: true });
     video.addEventListener('error', () => {
       loading.innerHTML = '<p style="color:#ef5350">Error cargando stream</p>';
-      loading.style.display = 'flex';
-      video.style.display = 'none';
+      loading.style.display = 'flex'; video.style.display = 'none';
     }, { once: true });
   } else {
-    video.src = url;
-    video.load();
-    loading.style.display = 'none';
-    video.style.display = 'block';
+    video.src = ch.url; video.load();
+    loading.style.display = 'none'; video.style.display = 'block';
     video.play().catch(console.error);
   }
 
@@ -373,11 +402,9 @@ function playChannel(ch) {
 
 function closePlayer() {
   state.inPlayer = false;
-  const overlay = document.getElementById('player-overlay');
-  const video   = document.getElementById('hls-player');
-  overlay.classList.add('hidden');
-  video.pause();
-  video.src = '';
+  const video = document.getElementById('hls-player');
+  document.getElementById('player-overlay').classList.add('hidden');
+  video.pause(); video.src = '';
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   focusFirst();
 }
@@ -386,80 +413,63 @@ function closePlayer() {
 // ADMIN PANEL
 // ============================================================
 function setupAdmin() {
-  const adminBtn    = document.getElementById('btn-admin');
+  const adminBtn     = document.getElementById('btn-admin');
   const adminOverlay = document.getElementById('admin-overlay');
-  const closeBtn    = document.getElementById('admin-close');
-  const saveBtn     = document.getElementById('admin-save');
-  const refreshBtn  = document.getElementById('admin-refresh');
-  const msgEl       = document.getElementById('admin-msg');
-  const urlInput    = document.getElementById('admin-m3u-url');
+  const closeBtn     = document.getElementById('admin-close');
+  const saveBtn      = document.getElementById('admin-save');
+  const refreshBtn   = document.getElementById('admin-refresh');
+  const msgEl        = document.getElementById('admin-msg');
+  const urlInput     = document.getElementById('admin-m3u-url');
 
-  // El botón ya se muestra/oculta en checkAdminStatus()
   adminBtn.addEventListener('click', async () => {
     if (!isAdmin) return;
     adminOverlay.classList.remove('hidden');
+    msgEl.style.display = 'none';
     try {
-      const r = await fetch('/api/config');
-      const cfg = await r.json();
+      const cfg = await fetch('/api/config').then(r => r.json());
       urlInput.value = cfg.m3uUrl || '';
     } catch (e) {}
-    msgEl.className = '';
-    msgEl.style.display = 'none';
   });
 
   closeBtn.addEventListener('click', () => adminOverlay.classList.add('hidden'));
-  adminOverlay.addEventListener('click', e => {
-    if (e.target === adminOverlay) adminOverlay.classList.add('hidden');
-  });
+  adminOverlay.addEventListener('click', e => { if (e.target === adminOverlay) adminOverlay.classList.add('hidden'); });
 
   saveBtn.addEventListener('click', async () => {
     const m3uUrl = urlInput.value.trim();
-    if (!m3uUrl) return;
-    showAdminMsg('Guardando...', '');
-
+    if (!m3uUrl) { showMsg('Ingresá una URL', 'error'); return; }
+    showMsg('Guardando...', '');
     try {
-      const r = await fetch('/api/admin/m3u', {
+      const r    = await fetch('/api/admin/m3u', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ hwid: currentHWID, m3uUrl })
       });
       const data = await r.json();
       if (data.success) {
-        showAdminMsg('✅ ' + data.message, 'success');
+        showMsg('✅ Guardado. Recargando canales...', 'success');
         await loadChannels();
         renderAll();
+        showMsg(`✅ ${state.channels.length} canales cargados`, 'success');
       } else {
-        showAdminMsg('❌ ' + data.error, 'error');
+        showMsg('❌ ' + data.error, 'error');
       }
-    } catch (e) {
-      showAdminMsg('❌ Error de conexión', 'error');
-    }
+    } catch (e) { showMsg('❌ Error de conexión', 'error'); }
   });
 
   refreshBtn.addEventListener('click', async () => {
-    showAdminMsg('Refrescando...', '');
-    try {
-      const r = await fetch('/api/admin/refresh', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ hwid: currentHWID })
-      });
-      const data = await r.json();
-      if (data.success) {
-        showAdminMsg('✅ ' + data.message, 'success');
-        await loadChannels();
-        renderAll();
-      } else {
-        showAdminMsg('❌ ' + data.error, 'error');
-      }
-    } catch (e) {
-      showAdminMsg('❌ Error de conexión', 'error');
+    showMsg('Recargando canales...', '');
+    await loadChannels();
+    renderAll();
+    if (state.lastError) {
+      showMsg('❌ ' + state.lastError, 'error');
+    } else {
+      showMsg(`✅ ${state.channels.length} canales cargados`, 'success');
     }
   });
 
-  function showAdminMsg(text, type) {
-    msgEl.textContent = text;
-    msgEl.className = type;
+  function showMsg(text, type) {
+    msgEl.textContent   = text;
+    msgEl.className     = type;
     msgEl.style.display = 'block';
   }
 }
@@ -474,18 +484,17 @@ function setupNav() {
 function rebuildFocusGrid() {
   state.focusGrid = [];
   const navBtns = Array.from(document.querySelectorAll('.nav-btn'));
-  if (navBtns.length > 0) state.focusGrid.push(navBtns);
+  if (navBtns.length) state.focusGrid.push(navBtns);
   document.querySelectorAll('.cards-scroll').forEach(row => {
     const cards = Array.from(row.querySelectorAll('.channel-card'));
-    if (cards.length > 0) state.focusGrid.push(cards);
+    if (cards.length) state.focusGrid.push(cards);
   });
 }
 
 function focusFirst() {
   rebuildFocusGrid();
-  if (state.focusGrid.length > 0 && state.focusGrid[0].length > 0) {
-    state.focusRow = 0;
-    state.focusCol = 0;
+  if (state.focusGrid.length && state.focusGrid[0].length) {
+    state.focusRow = 0; state.focusCol = 0;
     state.focusGrid[0][0].focus();
   }
 }
@@ -493,11 +502,10 @@ function focusFirst() {
 function moveFocus(dr, dc) {
   if (state.inPlayer) return;
   const grid = state.focusGrid;
-  if (grid.length === 0) return;
-  let r = Math.max(0, Math.min(state.focusRow + dr, grid.length - 1));
-  let c = Math.max(0, Math.min(state.focusCol + dc, grid[r].length - 1));
-  state.focusRow = r;
-  state.focusCol = c;
+  if (!grid.length) return;
+  const r = Math.max(0, Math.min(state.focusRow + dr, grid.length - 1));
+  const c = Math.max(0, Math.min(state.focusCol + dc, grid[r].length - 1));
+  state.focusRow = r; state.focusCol = c;
   const el = grid[r][c];
   if (el) { el.focus(); el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' }); }
 }
@@ -510,9 +518,9 @@ function setupRemote() {
     }
     switch (e.key) {
       case 'ArrowUp':    e.preventDefault(); moveFocus(-1, 0); break;
-      case 'ArrowDown':  e.preventDefault(); moveFocus(1, 0);  break;
+      case 'ArrowDown':  e.preventDefault(); moveFocus(1,  0); break;
       case 'ArrowLeft':  e.preventDefault(); moveFocus(0, -1); break;
-      case 'ArrowRight': e.preventDefault(); moveFocus(0, 1);  break;
+      case 'ArrowRight': e.preventDefault(); moveFocus(0,  1); break;
       case 'Escape':
         document.getElementById('search-overlay').classList.add('hidden');
         document.getElementById('admin-overlay').classList.add('hidden');
@@ -532,8 +540,7 @@ function setupSearch() {
   const results = document.getElementById('search-results');
 
   document.getElementById('btn-search').addEventListener('click', () => {
-    overlay.classList.remove('hidden');
-    input.focus();
+    overlay.classList.remove('hidden'); input.focus();
   });
   close.addEventListener('click', () => overlay.classList.add('hidden'));
 
@@ -554,7 +561,6 @@ function setupSearch() {
           <div style="font-size:12px;color:#888">${ch.category}</div>
         </div>
       </div>`).join('');
-
     results.querySelectorAll('.search-result-item').forEach(item => {
       item.addEventListener('click', () => {
         const ch = state.channels.find(c => c.id == item.dataset.id);
@@ -570,33 +576,43 @@ function setupSearch() {
 function setupBottomNav() {
   document.getElementById('btn-home').addEventListener('click', () => {
     state.currentCat = 'all';
-    document.querySelectorAll('.nav-btn').forEach(b => {
-      b.classList.toggle('active', b.dataset.cat === 'all');
-    });
-    filterByCategory('all');
-    focusFirst();
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('active', b.dataset.cat === 'all'));
+    filterByCategory('all'); focusFirst();
   });
-
   document.getElementById('btn-favorites').addEventListener('click', () => {
-    state.filtered = state.channels.filter(c => state.favorites.includes(c.id));
+    state.filtered   = state.channels.filter(c => state.favorites.includes(c.id));
     state.currentCat = 'favorites';
-    renderRows();
-    rebuildFocusGrid();
+    renderRows(); rebuildFocusGrid();
   });
 }
 
 // ============================================================
 // HEADER SCROLL
 // ============================================================
-const mainEl = document.getElementById('app-main');
-if (mainEl) {
-  mainEl.addEventListener('scroll', () => {
-    const header = document.getElementById('app-header');
-    if (header) header.classList.toggle('solid', mainEl.scrollTop > 10);
-  });
-}
+document.getElementById('app-main')?.addEventListener('scroll', () => {
+  document.getElementById('app-header')?.classList.toggle('solid',
+    document.getElementById('app-main').scrollTop > 10);
+});
 
 // ============================================================
-// START
+// INIT
 // ============================================================
+async function init() {
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(console.error);
+
+  // Verificar admin primero (antes de renderizar para saber si mostrar botón)
+  await checkAdminStatus();
+  await loadChannels();
+
+  renderAll();
+  setupNav();
+  setupRemote();
+  setupSearch();
+  setupBottomNav();
+  setupAdmin();
+  setupHWIDShortcut();
+
+  setTimeout(() => focusFirst(), 300);
+}
+
 document.addEventListener('DOMContentLoaded', init);
