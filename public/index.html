@@ -10,6 +10,8 @@
   <title>CriolloTV</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="/style.css">
+  <!-- HLS.js para streams M3U8 -->
+  <script src="https://cdn.jsdelivr.net/npm/hls.js@latest/dist/hls.min.js"></script>
 </head>
 <body>
   <!-- HEADER -->
@@ -19,7 +21,6 @@
     </div>
     <nav class="header-nav">
       <button class="nav-btn active" data-cat="all">Inicio</button>
-      <button class="nav-btn" data-cat="Noticias">Noticias</button>
     </nav>
     <div class="header-right">
       <span class="live-badge">● EN VIVO</span>
@@ -28,7 +29,10 @@
 
   <!-- MAIN CONTENT -->
   <main id="app-main">
-    <!-- CHANNEL ROWS -->
+    <div id="channels-loading">
+      <div class="spinner"></div>
+      <p>Cargando canales...</p>
+    </div>
     <div id="channel-rows"></div>
   </main>
 
@@ -44,13 +48,13 @@
         <div class="spinner"></div>
         <p>Cargando transmisión...</p>
       </div>
-      <iframe
-        id="yt-player"
-        src=""
-        frameborder="0"
-        allowfullscreen
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      ></iframe>
+      <video
+        id="hls-player"
+        controls
+        autoplay
+        playsinline
+        style="width:100%;height:100%;background:#000;"
+      ></video>
     </div>
     <div id="player-info-bar">
       <div id="player-channel-name"></div>
@@ -67,12 +71,36 @@
     <div id="search-results"></div>
   </div>
 
-  <!-- BOTTOM NAV (for TV remote) -->
+  <!-- ADMIN OVERLAY -->
+  <div id="admin-overlay" class="hidden">
+    <div id="admin-panel">
+      <h2>⚙️ Panel de Administración</h2>
+      <div class="admin-field">
+        <label>Contraseña</label>
+        <input type="password" id="admin-password" placeholder="••••••••">
+      </div>
+      <div class="admin-field">
+        <label>URL del M3U</label>
+        <input type="text" id="admin-m3u-url" placeholder="http://...">
+      </div>
+      <div class="admin-actions">
+        <button class="admin-btn admin-btn-primary" id="admin-save">Guardar M3U</button>
+        <button class="admin-btn admin-btn-primary" id="admin-refresh" style="flex:0.6">🔄 Refrescar</button>
+        <button class="admin-btn admin-btn-secondary" id="admin-close">Cerrar</button>
+      </div>
+      <div id="admin-msg"></div>
+    </div>
+  </div>
+
+  <!-- BOTTOM NAV -->
   <div id="bottom-nav">
     <button class="bottom-btn focusable" id="btn-home">🏠 Inicio</button>
     <button class="bottom-btn focusable" id="btn-search">🔍 Buscar</button>
     <button class="bottom-btn focusable" id="btn-favorites">⭐ Favoritos</button>
   </div>
+
+  <!-- Admin trigger -->
+  <button id="btn-admin" title="Admin">⚙️</button>
 
   <script src="/app.js"></script>
 </body>

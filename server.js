@@ -1,45 +1,142 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const { exec } = require('child_process');
-const util = require('util');
-const execPromise = util.promisify(exec);
+const fs = require('fs');
+const https = require('https');
+const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'criollo2024';
+const DEFAULT_M3U = process.env.M3U_URL ||
+  'http://tvmate.icu:8080/get.php?username=7ES2xf&password=934197&type=m3u';
+
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+
+function readConfig() {
+  try {
+    if (fs.existsSync(CONFIG_PATH)) {
+      return JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
+    }
+  } catch (e) {}
+  return { m3uUrl: DEFAULT_M3U };
+}
+
+function writeConfig(config) {
+  try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2)); }
+  catch (e) { console.error('Error saving config:', e); }
+}
+
 app.use(cors());
+app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// API: canales
-app.get('/api/channels', (req, res) => {
-  res.json(channels);
+function fetchUrl(url) {
+  return new Promise((resolve, reject) => {
+    const proto = url.startsWith('https') ? https : http;
+    const req = proto.get(url, { timeout: 20000 }, (res) => {
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        return fetchUrl(res.headers.location).then(resolve).catch(reject);
+      }
+      let data = '';
+      res.on('data', chunk => data += chunk);
+      res.on('end', () => resolve(data));
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Timeout')); });
+  });
+}
+
+function parseM3U(text) {
+  const channels = [];
+  const lines = text.split('\n');
+  let current = null;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (line.startsWith('#EXTINF:')) {
+      const tvgName = line.match(/tvg-name="([^"]*)"/)?.[1] || '';
+      const tvgLogo = line.match(/tvg-logo="([^"]*)"/)?.[1] || '';
+      const groupTitle = line.match(/group-title="([^"]*)"/)?.[1] || 'General';
+      const displayName = line.split(',').slice(-1)[0]?.trim() || tvgName;
+      current = {
+        name: displayName || tvgName || 'Canal',
+        logo: tvgLogo || '',
+        category: groupTitle || 'General',
+      };
+    } else if (line && !line.startsWith('#') && current) {
+      current.url = line;
+      current.id = channels.length + 1;
+      channels.push(current);
+      current = null;
+    }
+  }
+  return channels;
+}
+
+let channelCache = null;
+let cacheTime = 0;
+const CACHE_TTL = 5 * 60 * 1000;
+
+async function getChannels(forceRefresh = false) {
+  const now = Date.now();
+  if (!forceRefresh && channelCache && (now - cacheTime) < CACHE_TTL) return channelCache;
+  const config = readConfig();
+  try {
+    const raw = await fetchUrl(config.m3uUrl);
+    channelCache = parseM3U(raw);
+    cacheTime = now;
+    return channelCache;
+  } catch (e) {
+    console.error('Error fetching M3U:', e.message);
+    if (channelCache) return channelCache;
+    throw e;
+  }
+}
+
+app.get('/api/channels', async (req, res) => {
+  try {
+    const channels = await getChannels();
+    res.json({ success: true, channels });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
+  }
 });
 
-// API: obtener stream URL de YouTube
-app.get('/api/stream/:channelId', async (req, res) => {
-  const { channelId } = req.params;
-  
+app.get('/api/config', (req, res) => {
+  const config = readConfig();
+  res.json({ m3uUrl: config.m3uUrl });
+});
+
+app.post('/api/admin/m3u', async (req, res) => {
+  const { password, m3uUrl } = req.body;
+  if (!password || password !== ADMIN_PASSWORD)
+    return res.status(401).json({ success: false, error: 'Contraseña incorrecta' });
+  if (!m3uUrl || !m3uUrl.startsWith('http'))
+    return res.status(400).json({ success: false, error: 'URL inválida' });
+  const config = readConfig();
+  config.m3uUrl = m3uUrl;
+  writeConfig(config);
+  channelCache = null;
+  cacheTime = 0;
   try {
-    // Usar yt-dlp para obtener el stream m3u8
-    const ytUrl = `https://www.youtube.com/channel/${channelId}/live`;
-    
-    // Comando yt-dlp para obtener la mejor URL de stream
-    const { stdout } = await execPromise(
-      `yt-dlp -f "best[ext=mp4]" -g "${ytUrl}"`,
-      { timeout: 10000 }
-    );
-    
-    const streamUrl = stdout.trim();
-    
-    if (streamUrl) {
-      res.json({ success: true, streamUrl });
-    } else {
-      res.json({ success: false, error: 'No stream available' });
-    }
-  } catch (error) {
-    console.error('Error getting stream:', error);
-    res.json({ success: false, error: error.message });
+    await getChannels(true);
+    res.json({ success: true, message: 'M3U actualizado correctamente' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: 'URL guardada pero no se pudo cargar: ' + e.message });
+  }
+});
+
+app.post('/api/admin/refresh', async (req, res) => {
+  const { password } = req.body;
+  if (!password || password !== ADMIN_PASSWORD)
+    return res.status(401).json({ success: false, error: 'Contraseña incorrecta' });
+  channelCache = null;
+  try {
+    await getChannels(true);
+    res.json({ success: true, message: 'Cache refrescado' });
+  } catch (e) {
+    res.status(500).json({ success: false, error: e.message });
   }
 });
 
@@ -49,87 +146,5 @@ app.get('*', (req, res) => {
 
 app.listen(PORT, () => {
   console.log(`CriolloTV running on port ${PORT}`);
+  getChannels().then(ch => console.log(`Loaded ${ch.length} channels`)).catch(console.error);
 });
-
-const channels = [
-  {
-    id: 1,
-    category: "Noticias",
-    name: "TN",
-    description: "Todo Noticias",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TN_Todo_Noticias.svg/200px-TN_Todo_Noticias.svg.png",
-    youtubeChannelId: "UCimi4_HyFgJc3pDGGR3oFsg",
-    streamUrl: "https://5900.tv/tnok/",
-    color: "#e30613"
-  },
-  {
-    id: 2,
-    category: "Noticias",
-    name: "LN+",
-    description: "La Nación Más",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/LN%2B_logo.svg/200px-LN%2B_logo.svg.png",
-    youtubeChannelId: "UCVzLMTBl7wZEFRHaQKHQqNQ",
-    streamUrl: "https://5900.tv/la-nacion-ln-en-vivo-las-24-horas/",
-    color: "#003087"
-  },
-  {
-    id: 3,
-    category: "Noticias",
-    name: "C5N",
-    description: "Canal 5 Noticias",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/C5N_logo.svg/200px-C5N_logo.svg.png",
-    youtubeChannelId: "UCqbfHvFBe7KH4tFHNYHm5CA",
-    streamUrl: "https://5900.tv/c5n-en-vivo/",
-    color: "#005baa"
-  },
-  {
-    id: 4,
-    category: "Noticias",
-    name: "A24",
-    description: "América 24",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/A24-logo.png/200px-A24-logo.png",
-    youtubeChannelId: "UCHlLDz95bEp6pDlr0hCjijA",
-    streamUrl: "https://5900.tv/a24/",
-    color: "#e4002b"
-  },
-  {
-    id: 5,
-    category: "Noticias",
-    name: "Crónica TV",
-    description: "Noticias urgentes",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Cronica_TV_logo.svg/200px-Cronica_TV_logo.svg.png",
-    youtubeChannelId: "UC_Zq5y4kEZGiNvJSTtl-6Ag",
-    streamUrl: "https://5900.tv/cronica-tv/",
-    color: "#cc0000"
-  },
-  {
-    id: 6,
-    category: "Noticias",
-    name: "Canal 26",
-    description: "Noticias argentinas",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Canal_26_logo.svg/200px-Canal_26_logo.svg.png",
-    youtubeChannelId: "UCUfMNyL4CXbEBmKPVDqkfGg",
-    streamUrl: "https://5900.tv/canal-26/",
-    color: "#0066cc"
-  },
-  {
-    id: 7,
-    category: "Noticias",
-    name: "Telefe",
-    description: "Telefe en vivo",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Telefe_logo.svg/200px-Telefe_logo.svg.png",
-    youtubeChannelId: "UCEqJ_wJXljEPoTRiUJFi6ow",
-    streamUrl: "https://5900.tv/telefe/",
-    color: "#009fe3"
-  },
-  {
-    id: 8,
-    category: "Noticias",
-    name: "Canal 9",
-    description: "Canal 9 en vivo",
-    logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Canal_9_Argentina_logo.svg/200px-Canal_9_Argentina_logo.svg.png",
-    youtubeChannelId: "UCqbfHvFBe7KH4tFHNYHm5CA",
-    streamUrl: "https://5900.tv/canal-9-en-vivo/",
-    color: "#ff9900"
-  }
-];

@@ -1,39 +1,36 @@
 // ============================================================
-// ARGENTINA TV - PWA para Android TV
+// CRIOLLOTV - M3U PWA para Android TV
 // ============================================================
 
 const API = '/api/channels';
+let hlsInstance = null;
 
-// Estado de la app
 const state = {
   channels: [],
   filtered: [],
   currentCat: 'all',
   currentChannel: null,
-  focusGrid: [], // [[el, el, ...], [el, el, ...]] por fila
+  focusGrid: [],
   focusRow: 0,
   focusCol: 0,
   inPlayer: false,
-  favorites: JSON.parse(localStorage.getItem('ar-tv-favs') || '[]'),
+  favorites: JSON.parse(localStorage.getItem('criollo-favs') || '[]'),
 };
 
 // ============================================================
 // INIT
 // ============================================================
 async function init() {
-  // PWA Service Worker
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js').catch(console.error);
   }
-
   await loadChannels();
   renderAll();
   setupNav();
   setupRemote();
   setupSearch();
   setupBottomNav();
-
-  // Focus inicial
+  setupAdmin();
   setTimeout(() => focusFirst(), 300);
 }
 
@@ -41,15 +38,24 @@ async function init() {
 // DATA
 // ============================================================
 async function loadChannels() {
+  const loadingEl = document.getElementById('channels-loading');
+  if (loadingEl) loadingEl.style.display = 'flex';
+
   try {
     const r = await fetch(API);
-    state.channels = await r.json();
-    state.filtered = state.channels;
+    const data = await r.json();
+    if (data.success && data.channels) {
+      state.channels = data.channels;
+    } else {
+      state.channels = [];
+    }
   } catch (e) {
     console.error('Error loading channels', e);
-    state.channels = FALLBACK_CHANNELS;
-    state.filtered = FALLBACK_CHANNELS;
+    state.channels = [];
   }
+
+  state.filtered = state.channels;
+  if (loadingEl) loadingEl.style.display = 'none';
 }
 
 function getCategories() {
@@ -59,7 +65,12 @@ function getCategories() {
 
 function filterByCategory(cat) {
   state.currentCat = cat;
-  state.filtered = cat === 'all' ? state.channels : state.channels.filter(c => c.category === cat);
+  if (cat === 'all') {
+    // En "all" mostramos todas las categorías como filas separadas
+    state.filtered = state.channels;
+  } else {
+    state.filtered = state.channels.filter(c => c.category === cat);
+  }
   renderRows();
   rebuildFocusGrid();
 }
@@ -80,7 +91,7 @@ function renderNav() {
     const btn = document.createElement('button');
     btn.className = 'nav-btn focusable' + (cat === state.currentCat ? ' active' : '');
     btn.dataset.cat = cat;
-    btn.textContent = cat === 'all' ? 'Inicio' : cat;
+    btn.textContent = cat === 'all' ? 'Todos' : cat;
     btn.addEventListener('click', () => {
       document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
@@ -94,47 +105,52 @@ function renderRows() {
   const container = document.getElementById('channel-rows');
   container.innerHTML = '';
 
-  // Grupo por categoría
-  const groups = {};
-  state.filtered.forEach(ch => {
-    if (!groups[ch.category]) groups[ch.category] = [];
-    groups[ch.category].push(ch);
-  });
-
-  // Favoritos
-  if (state.currentCat === 'all' && state.favorites.length > 0) {
-    const favChannels = state.channels.filter(c => state.favorites.includes(c.id));
-    if (favChannels.length > 0) {
-      container.appendChild(createRow('⭐ Mis Favoritos', favChannels));
-    }
+  if (state.channels.length === 0) {
+    container.innerHTML = `
+      <div style="text-align:center;padding:80px 0;color:#666;">
+        <div style="font-size:48px;margin-bottom:16px;">📡</div>
+        <div style="font-size:20px;margin-bottom:8px;">No se encontraron canales</div>
+        <div style="font-size:14px;color:#555;">Verificá el link M3U en el panel de administración</div>
+      </div>`;
+    return;
   }
 
-  Object.entries(groups).forEach(([cat, channels]) => {
-    container.appendChild(createRow(cat, channels));
-  });
+  if (state.currentCat === 'all') {
+    // Agrupar por categoría
+    const byCategory = {};
+    state.channels.forEach(ch => {
+      if (!byCategory[ch.category]) byCategory[ch.category] = [];
+      byCategory[ch.category].push(ch);
+    });
+    Object.entries(byCategory).forEach(([cat, channels]) => {
+      renderRow(container, cat, channels);
+    });
+  } else {
+    renderRow(container, state.currentCat, state.filtered);
+  }
 
   rebuildFocusGrid();
 }
 
-function createRow(title, channels) {
-  const row = document.createElement('section');
+function renderRow(container, title, channels) {
+  const row = document.createElement('div');
   row.className = 'channel-row';
-  row.dataset.category = title;
 
-  const h2 = document.createElement('h2');
-  h2.className = 'row-title';
-  h2.innerHTML = `<span>${title}</span>`;
+  const titleEl = document.createElement('div');
+  titleEl.className = 'row-title';
+  titleEl.innerHTML = `<span>${title}</span>`;
 
   const scroll = document.createElement('div');
   scroll.className = 'cards-scroll';
 
   channels.forEach(ch => {
-    scroll.appendChild(createCard(ch));
+    const card = createCard(ch);
+    scroll.appendChild(card);
   });
 
-  row.appendChild(h2);
+  row.appendChild(titleEl);
   row.appendChild(scroll);
-  return row;
+  container.appendChild(row);
 }
 
 function createCard(ch) {
@@ -142,317 +158,336 @@ function createCard(ch) {
   card.className = 'channel-card focusable';
   card.tabIndex = 0;
   card.dataset.id = ch.id;
+  card.dataset.url = ch.url || '';
 
   const isFav = state.favorites.includes(ch.id);
-  const bgColor = ch.color || '#1f1f1f';
 
   card.innerHTML = `
     <div class="card-inner">
-      <div class="card-bg" style="background: linear-gradient(135deg, ${bgColor}33, ${bgColor}88);"></div>
-      <div class="card-color-bar" style="background: ${bgColor};"></div>
+      <div class="card-bg" style="background: linear-gradient(135deg, #1a237e, #0d47a1);"></div>
       <div class="card-gradient"></div>
-      <img class="card-logo" src="${getChannelLogo(ch)}" alt="${ch.name}" onerror="this.style.display='none'">
+      ${ch.logo ? `<div class="card-logo"><img src="${ch.logo}" alt="${ch.name}" loading="lazy" onerror="this.style.display='none'"></div>` : ''}
       <div class="card-info">
         <div class="card-name">${ch.name}</div>
-        <div class="card-desc">${ch.description}</div>
+        <div class="card-desc">${ch.category}</div>
       </div>
-      <div class="card-live-dot">EN VIVO</div>
-      ${isFav ? '<div style="position:absolute;top:12px;left:12px;font-size:18px;">⭐</div>' : ''}
-    </div>
-  `;
+      <div class="card-live-dot"></div>
+      ${isFav ? '<div style="position:absolute;top:8px;right:8px;font-size:16px;">⭐</div>' : ''}
+    </div>`;
 
-  card.addEventListener('click', () => openPlayer(ch));
+  card.addEventListener('click', () => playChannel(ch));
   card.addEventListener('keydown', e => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
-      openPlayer(ch);
-    }
-    if (e.key === 'f' || e.key === 'F') {
-      toggleFavorite(ch.id);
+      playChannel(ch);
     }
   });
-
-  // Long press for favorite
-  let pressTimer;
-  card.addEventListener('mousedown', () => {
-    pressTimer = setTimeout(() => toggleFavorite(ch.id), 700);
-  });
-  card.addEventListener('mouseup', () => clearTimeout(pressTimer));
 
   return card;
 }
 
-function getChannelLogo(ch) {
-  // Usar logo de Wikipedia o placeholder
-  return ch.logo || `https://via.placeholder.com/120x60/222/fff?text=${encodeURIComponent(ch.name)}`;
-}
-
 // ============================================================
-// PLAYER
+// PLAYER - HLS
 // ============================================================
-function openPlayer(ch) {
+function playChannel(ch) {
   state.currentChannel = ch;
   state.inPlayer = true;
 
   const overlay = document.getElementById('player-overlay');
-  overlay.classList.remove('hidden');
-
-  document.getElementById('player-title').textContent = ch.name;
-  document.getElementById('player-channel-name').textContent = ch.name;
-  document.getElementById('player-channel-desc').textContent = ch.description;
-
+  const video = document.getElementById('hls-player');
   const loading = document.getElementById('player-loading');
+  const titleEl = document.getElementById('player-title');
+  const nameEl = document.getElementById('player-channel-name');
+  const descEl = document.getElementById('player-channel-desc');
+
+  overlay.classList.remove('hidden');
   loading.style.display = 'flex';
+  video.style.display = 'none';
 
-  const iframe = document.getElementById('yt-player');
-  iframe.src = '';
+  titleEl.textContent = ch.name;
+  nameEl.textContent = ch.name;
+  descEl.textContent = ch.category;
 
-  // Usar streamUrl directamente (5900.tv) para bypass de YouTube
-  const streamUrl = ch.streamUrl || '';
-  
-  setTimeout(() => {
-    iframe.src = streamUrl;
-    loading.style.display = 'none';
-  }, 800);
+  // Limpiar instancia HLS anterior
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
+  video.src = '';
 
-  // Focus al botón back
-  setTimeout(() => document.getElementById('player-back').focus(), 100);
+  const streamUrl = ch.url;
 
-  // Scroll lock
-  document.getElementById('app-main').style.overflow = 'hidden';
+  if (!streamUrl) {
+    loading.innerHTML = '<p style="color:#ef5350">No hay URL de stream disponible</p>';
+    return;
+  }
+
+  // Intentar reproducir con HLS.js o nativo
+  function startPlayback(url) {
+    if (Hls.isSupported()) {
+      hlsInstance = new Hls({
+        enableWorker: true,
+        maxBufferLength: 30,
+        xhrSetup: (xhr) => {
+          xhr.setRequestHeader('User-Agent', 'Mozilla/5.0');
+        }
+      });
+      hlsInstance.loadSource(url);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        loading.style.display = 'none';
+        video.style.display = 'block';
+        video.play().catch(console.error);
+      });
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.error('HLS fatal error:', data);
+          loading.innerHTML = `<p style="color:#ef5350">Error reproduciendo stream</p><p style="font-size:12px;color:#777;margin-top:8px;">${data.type}</p>`;
+          loading.style.display = 'flex';
+          video.style.display = 'none';
+        }
+      });
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari nativo HLS
+      video.src = url;
+      video.addEventListener('loadedmetadata', () => {
+        loading.style.display = 'none';
+        video.style.display = 'block';
+        video.play().catch(console.error);
+      }, { once: true });
+      video.addEventListener('error', () => {
+        loading.innerHTML = '<p style="color:#ef5350">Error cargando stream</p>';
+        loading.style.display = 'flex';
+        video.style.display = 'none';
+      }, { once: true });
+    } else {
+      // Fallback directo
+      video.src = url;
+      video.load();
+      loading.style.display = 'none';
+      video.style.display = 'block';
+      video.play().catch(console.error);
+    }
+  }
+
+  startPlayback(streamUrl);
+
+  document.getElementById('player-back').focus();
 }
 
 function closePlayer() {
   state.inPlayer = false;
   const overlay = document.getElementById('player-overlay');
+  const video = document.getElementById('hls-player');
+
   overlay.classList.add('hidden');
-  
-  const iframe = document.getElementById('yt-player');
-  iframe.src = '';
-  
-  document.getElementById('app-main').style.overflow = '';
+  video.pause();
+  video.src = '';
+
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
+
   focusFirst();
 }
 
-document.getElementById('player-back').addEventListener('click', closePlayer);
+// ============================================================
+// ADMIN
+// ============================================================
+function setupAdmin() {
+  const adminBtn = document.getElementById('btn-admin');
+  const adminOverlay = document.getElementById('admin-overlay');
+  const closeBtn = document.getElementById('admin-close');
+  const saveBtn = document.getElementById('admin-save');
+  const refreshBtn = document.getElementById('admin-refresh');
+  const msgEl = document.getElementById('admin-msg');
+  const urlInput = document.getElementById('admin-m3u-url');
 
-// ============================================================
-// FAVORITES
-// ============================================================
-function toggleFavorite(id) {
-  const idx = state.favorites.indexOf(id);
-  if (idx > -1) {
-    state.favorites.splice(idx, 1);
-    showToast('Eliminado de favoritos');
-  } else {
-    state.favorites.push(id);
-    showToast('⭐ Agregado a favoritos');
-  }
-  localStorage.setItem('ar-tv-favs', JSON.stringify(state.favorites));
-  renderRows();
-}
-
-// ============================================================
-// HEADER SCROLL
-// ============================================================
-document.getElementById('app-main').addEventListener('scroll', function() {
-  const header = document.getElementById('app-header');
-  header.classList.toggle('solid', this.scrollTop > 50);
-});
-
-// ============================================================
-// NAV BUTTONS
-// ============================================================
-function setupNav() {
-  // Already done in renderNav()
-}
-
-// ============================================================
-// REMOTE CONTROL / KEYBOARD NAVIGATION
-// ============================================================
-function rebuildFocusGrid() {
-  // Build a grid of focusable elements for D-pad navigation
-  const rows = [];
-  
-  // Header nav row
-  const navBtns = [...document.querySelectorAll('.header-nav .nav-btn')];
-  if (navBtns.length) rows.push(navBtns);
-
-  // Channel card rows
-  document.querySelectorAll('.cards-scroll').forEach(scroll => {
-    const cards = [...scroll.querySelectorAll('.channel-card')];
-    if (cards.length) rows.push(cards);
+  // Cargar URL actual al abrir
+  adminBtn.addEventListener('click', async () => {
+    adminOverlay.classList.remove('hidden');
+    try {
+      const r = await fetch('/api/config');
+      const cfg = await r.json();
+      urlInput.value = cfg.m3uUrl || '';
+    } catch (e) {}
+    msgEl.className = '';
+    msgEl.style.display = 'none';
+    document.getElementById('admin-password').value = '';
   });
 
-  // Bottom nav
-  const bottomBtns = [...document.querySelectorAll('.bottom-btn')];
-  if (bottomBtns.length) rows.push(bottomBtns);
+  closeBtn.addEventListener('click', () => {
+    adminOverlay.classList.add('hidden');
+  });
 
-  state.focusGrid = rows;
-  state.focusRow = 0;
-  state.focusCol = 0;
+  adminOverlay.addEventListener('click', (e) => {
+    if (e.target === adminOverlay) adminOverlay.classList.add('hidden');
+  });
+
+  saveBtn.addEventListener('click', async () => {
+    const password = document.getElementById('admin-password').value;
+    const m3uUrl = urlInput.value.trim();
+    msgEl.className = '';
+    msgEl.textContent = 'Guardando...';
+    msgEl.style.display = 'block';
+
+    try {
+      const r = await fetch('/api/admin/m3u', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password, m3uUrl })
+      });
+      const data = await r.json();
+      if (data.success) {
+        msgEl.className = 'success';
+        msgEl.textContent = '✅ ' + data.message;
+        // Recargar canales
+        await loadChannels();
+        renderAll();
+      } else {
+        msgEl.className = 'error';
+        msgEl.textContent = '❌ ' + data.error;
+      }
+    } catch (e) {
+      msgEl.className = 'error';
+      msgEl.textContent = '❌ Error de conexión';
+    }
+  });
+
+  refreshBtn.addEventListener('click', async () => {
+    const password = document.getElementById('admin-password').value;
+    msgEl.className = '';
+    msgEl.textContent = 'Refrescando...';
+    msgEl.style.display = 'block';
+
+    try {
+      const r = await fetch('/api/admin/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password })
+      });
+      const data = await r.json();
+      if (data.success) {
+        msgEl.className = 'success';
+        msgEl.textContent = '✅ Cache refrescado';
+        await loadChannels();
+        renderAll();
+      } else {
+        msgEl.className = 'error';
+        msgEl.textContent = '❌ ' + data.error;
+      }
+    } catch (e) {
+      msgEl.className = 'error';
+      msgEl.textContent = '❌ Error de conexión';
+    }
+  });
+}
+
+// ============================================================
+// NAV / FOCUS
+// ============================================================
+function setupNav() {
+  document.getElementById('player-back').addEventListener('click', closePlayer);
+}
+
+function rebuildFocusGrid() {
+  state.focusGrid = [];
+  const rows = document.querySelectorAll('.cards-scroll');
+  rows.forEach(row => {
+    const cards = Array.from(row.querySelectorAll('.channel-card'));
+    if (cards.length > 0) state.focusGrid.push(cards);
+  });
+  const navBtns = Array.from(document.querySelectorAll('.nav-btn'));
+  if (navBtns.length > 0) state.focusGrid.unshift(navBtns);
 }
 
 function focusFirst() {
   rebuildFocusGrid();
-  // Focus on first channel card
-  const firstCard = document.querySelector('.channel-card');
-  if (firstCard) {
-    state.focusRow = 1; // Skip header nav row
+  if (state.focusGrid.length > 0 && state.focusGrid[0].length > 0) {
+    state.focusRow = 0;
     state.focusCol = 0;
-    firstCard.focus();
+    state.focusGrid[0][0].focus();
   }
 }
 
-function focusElement(row, col) {
+function moveFocus(dr, dc) {
+  if (state.inPlayer) return;
   const grid = state.focusGrid;
-  if (!grid[row]) return;
-  const rowEls = grid[row];
-  const c = Math.max(0, Math.min(col, rowEls.length - 1));
-  state.focusRow = row;
+  if (grid.length === 0) return;
+
+  let r = state.focusRow + dr;
+  let c = state.focusCol + dc;
+
+  r = Math.max(0, Math.min(r, grid.length - 1));
+  c = Math.max(0, Math.min(c, grid[r].length - 1));
+
+  state.focusRow = r;
   state.focusCol = c;
-  const el = rowEls[c];
+
+  const el = grid[r][c];
   if (el) {
-    el.focus({ preventScroll: false });
-    el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    el.focus();
+    el.scrollIntoView({ behavior: 'smooth', block: 'nearest', inline: 'nearest' });
   }
 }
 
 function setupRemote() {
-  document.addEventListener('keydown', handleKeyDown);
+  document.addEventListener('keydown', (e) => {
+    if (state.inPlayer) {
+      if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack') closePlayer();
+      return;
+    }
+    switch (e.key) {
+      case 'ArrowUp':    e.preventDefault(); moveFocus(-1, 0); break;
+      case 'ArrowDown':  e.preventDefault(); moveFocus(1, 0);  break;
+      case 'ArrowLeft':  e.preventDefault(); moveFocus(0, -1); break;
+      case 'ArrowRight': e.preventDefault(); moveFocus(0, 1);  break;
+      case 'Enter':      break; // handled by element
+      case 'Escape':
+        document.getElementById('search-overlay').classList.add('hidden');
+        document.getElementById('admin-overlay').classList.add('hidden');
+        break;
+    }
+  });
 }
-
-function handleKeyDown(e) {
-  // Si el player está abierto, solo manejar Back/Escape
-  if (state.inPlayer) {
-    if (e.key === 'Escape' || e.key === 'Backspace' || e.key === 'GoBack') {
-      e.preventDefault();
-      closePlayer();
-    }
-    return;
-  }
-
-  // Si search está abierto
-  if (!document.getElementById('search-overlay').classList.contains('hidden')) {
-    if (e.key === 'Escape' || e.key === 'Backspace') {
-      e.preventDefault();
-      closeSearch();
-    }
-    return;
-  }
-
-  const { focusRow, focusCol, focusGrid } = state;
-
-  switch (e.key) {
-    case 'ArrowUp':
-      e.preventDefault();
-      if (focusRow > 0) {
-        const prevRow = focusGrid[focusRow - 1];
-        const col = Math.min(focusCol, prevRow.length - 1);
-        focusElement(focusRow - 1, col);
-      }
-      break;
-
-    case 'ArrowDown':
-      e.preventDefault();
-      if (focusRow < focusGrid.length - 1) {
-        const nextRow = focusGrid[focusRow + 1];
-        const col = Math.min(focusCol, nextRow.length - 1);
-        focusElement(focusRow + 1, col);
-      }
-      break;
-
-    case 'ArrowLeft':
-      e.preventDefault();
-      if (focusCol > 0) {
-        focusElement(focusRow, focusCol - 1);
-      }
-      break;
-
-    case 'ArrowRight':
-      e.preventDefault();
-      if (focusGrid[focusRow] && focusCol < focusGrid[focusRow].length - 1) {
-        focusElement(focusRow, focusCol + 1);
-      }
-      break;
-
-    case 'Enter':
-    case ' ':
-      // Let the element handle it naturally
-      break;
-
-    case 'Backspace':
-    case 'Escape':
-    case 'GoBack':
-      e.preventDefault();
-      // Nothing to go back to in main view
-      break;
-
-    // TV remote colored buttons
-    case 'ColorF0Red':
-    case 'r':
-      openSearch();
-      break;
-
-    case 'F':
-    case 'f':
-      // Favorite current focused card
-      break;
-  }
-}
-
-// Track focus changes to update state
-document.addEventListener('focusin', (e) => {
-  if (state.inPlayer) return;
-  const grid = state.focusGrid;
-  for (let r = 0; r < grid.length; r++) {
-    const c = grid[r].indexOf(e.target);
-    if (c > -1) {
-      state.focusRow = r;
-      state.focusCol = c;
-      break;
-    }
-  }
-});
 
 // ============================================================
 // SEARCH
 // ============================================================
 function setupSearch() {
+  const overlay = document.getElementById('search-overlay');
   const input = document.getElementById('search-input');
-  
+  const close = document.getElementById('search-close');
+  const results = document.getElementById('search-results');
+
+  document.getElementById('btn-search').addEventListener('click', () => {
+    overlay.classList.remove('hidden');
+    input.focus();
+  });
+  close.addEventListener('click', () => overlay.classList.add('hidden'));
+
   input.addEventListener('input', () => {
     const q = input.value.toLowerCase().trim();
-    const results = document.getElementById('search-results');
-    results.innerHTML = '';
-    
-    if (!q) return;
-    
+    if (!q) { results.innerHTML = ''; return; }
     const found = state.channels.filter(c =>
-      c.name.toLowerCase().includes(q) ||
-      c.description.toLowerCase().includes(q) ||
-      c.category.toLowerCase().includes(q)
-    );
-    
-    found.forEach(ch => {
-      const card = createCard(ch);
-      results.appendChild(card);
+      c.name.toLowerCase().includes(q) || c.category.toLowerCase().includes(q)
+    ).slice(0, 20);
+    results.innerHTML = found.map(ch => `
+      <div class="search-result-item" data-id="${ch.id}" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid #222;display:flex;align-items:center;gap:12px;">
+        ${ch.logo ? `<img src="${ch.logo}" style="width:40px;height:40px;object-fit:contain;" onerror="this.style.display='none'">` : '<div style="width:40px;height:40px;background:#1a237e;border-radius:4px;"></div>'}
+        <div>
+          <div style="font-weight:600">${ch.name}</div>
+          <div style="font-size:12px;color:#888">${ch.category}</div>
+        </div>
+      </div>`).join('');
+    results.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const ch = state.channels.find(c => c.id == item.dataset.id);
+        if (ch) { overlay.classList.add('hidden'); playChannel(ch); }
+      });
     });
   });
-
-  document.getElementById('search-close').addEventListener('click', closeSearch);
-}
-
-function openSearch() {
-  document.getElementById('search-overlay').classList.remove('hidden');
-  setTimeout(() => document.getElementById('search-input').focus(), 100);
-}
-
-function closeSearch() {
-  document.getElementById('search-overlay').classList.add('hidden');
-  document.getElementById('search-input').value = '';
-  document.getElementById('search-results').innerHTML = '';
-  focusFirst();
 }
 
 // ============================================================
@@ -460,61 +495,34 @@ function closeSearch() {
 // ============================================================
 function setupBottomNav() {
   document.getElementById('btn-home').addEventListener('click', () => {
+    state.currentCat = 'all';
+    document.querySelectorAll('.nav-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.cat === 'all');
+    });
     filterByCategory('all');
-    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
-    document.querySelector('.nav-btn[data-cat="all"]')?.classList.add('active');
-    document.getElementById('app-main').scrollTo({ top: 0, behavior: 'smooth' });
+    focusFirst();
   });
-
-  document.getElementById('btn-search').addEventListener('click', openSearch);
 
   document.getElementById('btn-favorites').addEventListener('click', () => {
-    if (state.favorites.length === 0) {
-      showToast('No tenés favoritos todavía. Mantené presionado un canal para agregar.');
-      return;
-    }
-    // Scroll to fav row
-    const favRow = document.querySelector('.channel-row[data-category="⭐ Mis Favoritos"]');
-    if (favRow) {
-      favRow.scrollIntoView({ behavior: 'smooth' });
-    }
+    state.filtered = state.channels.filter(c => state.favorites.includes(c.id));
+    state.currentCat = 'favorites';
+    renderRows();
+    rebuildFocusGrid();
   });
 }
 
 // ============================================================
-// TOAST
+// HEADER SCROLL
 // ============================================================
-function showToast(msg) {
-  const existing = document.querySelector('.toast');
-  if (existing) existing.remove();
-  
-  const toast = document.createElement('div');
-  toast.className = 'toast';
-  toast.textContent = msg;
-  document.body.appendChild(toast);
-  
-  setTimeout(() => toast.remove(), 3000);
+const mainEl = document.getElementById('app-main');
+if (mainEl) {
+  mainEl.addEventListener('scroll', () => {
+    const header = document.getElementById('app-header');
+    if (header) header.classList.toggle('solid', mainEl.scrollTop > 10);
+  });
 }
-
-// ============================================================
-// FALLBACK CHANNELS (si el servidor falla)
-// ============================================================
-const FALLBACK_CHANNELS = [
-  {
-    id: 1, category: "Noticias", name: "TN", description: "Todo Noticias",
-    logo: "", youtubeChannelId: "UCimi4_HyFgJc3pDGGR3oFsg", color: "#e30613"
-  },
-  {
-    id: 2, category: "Noticias", name: "C5N", description: "Canal 5 Noticias",
-    logo: "", youtubeChannelId: "UCqbfHvFBe7KH4tFHNYHm5CA", color: "#005baa"
-  },
-  {
-    id: 3, category: "Noticias", name: "LN+", description: "La Nación Más",
-    logo: "", youtubeChannelId: "UCVzLMTBl7wZEFRHaQKHQqNQ", color: "#003087"
-  },
-];
 
 // ============================================================
 // START
 // ============================================================
-init();
+document.addEventListener('DOMContentLoaded', init);

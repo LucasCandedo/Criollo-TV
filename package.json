@@ -1,7 +1,7 @@
 {
-  "name": "argentina-tv",
-  "version": "1.0.0",
-  "description": "Argentina TV - Android TV PWA",
+  "name": "criollotv",
+  "version": "2.0.0",
+  "description": "CriolloTV - M3U IPTV PWA para Android TV",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
