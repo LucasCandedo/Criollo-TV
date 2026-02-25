@@ -4,8 +4,8 @@
   "description": "Canales de TV Argentina en vivo",
   "start_url": "/",
   "display": "fullscreen",
-  "background_color": "#000000",
-  "theme_color": "#000000",
+  "background_color": "#141414",
+  "theme_color": "#141414",
   "orientation": "landscape",
   "icons": [
     {
