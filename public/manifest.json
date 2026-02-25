@@ -1,6 +1,6 @@
 {
-  "name": "Argentina TV",
-  "short_name": "AR TV",
+  "name": "CriolloTV",
+  "short_name": "CriolloTV",
   "description": "Canales de TV Argentina en vivo",
   "start_url": "/",
   "display": "fullscreen",
@@ -9,12 +9,7 @@
   "orientation": "landscape",
   "icons": [
     {
-      "src": "/icons/icon-192.png",
-      "sizes": "192x192",
-      "type": "image/png"
-    },
-    {
-      "src": "/icons/icon-512.png",
+      "src": "/icons/criollo-logo.png",
       "sizes": "512x512",
       "type": "image/png"
     }

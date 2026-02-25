@@ -229,12 +229,11 @@ function openPlayer(ch) {
   const iframe = document.getElementById('yt-player');
   iframe.src = '';
 
-  // Construir URL del live de YouTube
-  // Intentar con channelId primero, luego handle
-  const ytUrl = buildYouTubeUrl(ch);
+  // Usar la URL de 5900.tv directamente
+  const streamUrl = ch.streamUrl || '';
   
   setTimeout(() => {
-    iframe.src = ytUrl;
+    iframe.src = streamUrl;
     loading.style.display = 'none';
   }, 800);
 
@@ -243,26 +242,6 @@ function openPlayer(ch) {
 
   // Scroll lock
   document.getElementById('app-main').style.overflow = 'hidden';
-}
-
-function buildYouTubeUrl(ch) {
-  // Intentar el live del canal. YouTube permite embed del live si se conoce el channelId
-  // URL para live embed: https://www.youtube.com/embed/live_stream?channel=CHANNEL_ID
-  const params = new URLSearchParams({
-    autoplay: 1,
-    mute: 0,
-    rel: 0,
-    modestbranding: 1,
-    playsinline: 1,
-  });
-
-  if (ch.youtubeChannelId) {
-    return `https://www.youtube.com/embed/live_stream?channel=${ch.youtubeChannelId}&${params}`;
-  } else if (ch.youtubeHandle) {
-    // Fallback: search embed (no es ideal pero funciona)
-    return `https://www.youtube.com/embed?listType=user_uploads&list=${ch.youtubeHandle.replace('@','')}&${params}`;
-  }
-  return '';
 }
 
 function closePlayer() {
@@ -548,15 +527,15 @@ function showToast(msg) {
 const FALLBACK_CHANNELS = [
   {
     id: 1, category: "Noticias", name: "TN", description: "Todo Noticias",
-    logo: "", youtubeChannelId: "UCimi4_HyFgJc3pDGGR3oFsg", color: "#e30613"
+    logo: "", streamUrl: "https://5900.tv/tnok/", color: "#e30613"
   },
   {
     id: 2, category: "Noticias", name: "C5N", description: "Canal 5 Noticias",
-    logo: "", youtubeChannelId: "UCqbfHvFBe7KH4tFHNYHm5CA", color: "#005baa"
+    logo: "", streamUrl: "https://5900.tv/c5n-en-vivo/", color: "#005baa"
   },
   {
     id: 3, category: "Noticias", name: "LN+", description: "La Nación Más",
-    logo: "", youtubeChannelId: "UCVzLMTBl7wZEFRHaQKHQqNQ", color: "#003087"
+    logo: "", streamUrl: "https://5900.tv/la-nacion-ln-en-vivo-las-24-horas/", color: "#003087"
   },
 ];
 
