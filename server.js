@@ -26,7 +26,7 @@ const channels = [
     id: 1,
     category: "Noticias",
     name: "TN",
-    description: "Todo Noticias - Canal 24h de noticias",
+    description: "Todo Noticias",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/85/TN_Todo_Noticias.svg/200px-TN_Todo_Noticias.svg.png",
     streamUrl: "https://5900.tv/tnok/",
     color: "#e30613"
@@ -35,7 +35,7 @@ const channels = [
     id: 2,
     category: "Noticias",
     name: "LN+",
-    description: "La Nación Más - Canal de La Nación",
+    description: "La Nación Más",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/c/cf/LN%2B_logo.svg/200px-LN%2B_logo.svg.png",
     streamUrl: "https://5900.tv/la-nacion-ln-en-vivo-las-24-horas/",
     color: "#003087"
@@ -44,7 +44,7 @@ const channels = [
     id: 3,
     category: "Noticias",
     name: "C5N",
-    description: "Canal 5 Noticias - Información continua",
+    description: "Canal 5 Noticias",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/8/8e/C5N_logo.svg/200px-C5N_logo.svg.png",
     streamUrl: "https://5900.tv/c5n-en-vivo/",
     color: "#005baa"
@@ -53,7 +53,7 @@ const channels = [
     id: 4,
     category: "Noticias",
     name: "A24",
-    description: "América 24 - Noticias y análisis",
+    description: "América 24",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/4/43/A24-logo.png/200px-A24-logo.png",
     streamUrl: "https://5900.tv/a24/",
     color: "#e4002b"
@@ -62,7 +62,7 @@ const channels = [
     id: 5,
     category: "Noticias",
     name: "Crónica TV",
-    description: "El canal de las noticias urgentes",
+    description: "Noticias urgentes",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/a/a2/Cronica_TV_logo.svg/200px-Cronica_TV_logo.svg.png",
     streamUrl: "https://5900.tv/cronica-tv/",
     color: "#cc0000"
@@ -71,7 +71,7 @@ const channels = [
     id: 6,
     category: "Noticias",
     name: "Canal 26",
-    description: "Noticias argentinas en vivo",
+    description: "Noticias argentinas",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/d0/Canal_26_logo.svg/200px-Canal_26_logo.svg.png",
     streamUrl: "https://5900.tv/canal-26/",
     color: "#0066cc"
@@ -80,7 +80,7 @@ const channels = [
     id: 7,
     category: "Noticias",
     name: "Telefe",
-    description: "Telefe - El canal líder en audiencia",
+    description: "Telefe en vivo",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/2/21/Telefe_logo.svg/200px-Telefe_logo.svg.png",
     streamUrl: "https://5900.tv/telefe/",
     color: "#009fe3"
@@ -89,7 +89,7 @@ const channels = [
     id: 8,
     category: "Noticias",
     name: "Canal 9",
-    description: "Canal 9 - Noticias y entretenimiento",
+    description: "Canal 9 en vivo",
     logo: "https://upload.wikimedia.org/wikipedia/commons/thumb/7/74/Canal_9_Argentina_logo.svg/200px-Canal_9_Argentina_logo.svg.png",
     streamUrl: "https://5900.tv/canal-9-en-vivo/",
     color: "#ff9900"

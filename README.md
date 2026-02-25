@@ -1,10 +1,17 @@
 # 📺 CriolloTV
 
-Aplicación web para ver canales de TV Argentina en vivo, optimizada para Android TV.
+App minimalista para ver canales de TV Argentina en vivo, optimizada para TV Box y control remoto.
 
-## 📺 Canales Disponibles
+## ✨ Características
 
-### Noticias en Vivo
+- 🎯 **Diseño minimalista** - Interfaz simple y directa
+- 🎮 **Control remoto completo** - Navegación con D-pad
+- 📺 **8 canales de noticias** - Los principales en Argentina
+- ⚡ **Optimizado para TV Box** - Rendimiento fluido
+- 🔓 **Sin bloqueos** - Streams directos desde 5900.tv
+
+## 📺 Canales
+
 - **TN** - Todo Noticias
 - **LN+** - La Nación Más
 - **C5N** - Canal 5 Noticias
@@ -14,14 +21,15 @@ Aplicación web para ver canales de TV Argentina en vivo, optimizada para Androi
 - **Telefe**
 - **Canal 9**
 
-## ✨ Características
+## 🎮 Controles
 
-- 🎬 Ver canales en vivo sin bloqueos
-- 📱 PWA optimizada para Android TV y móviles
-- 🎮 Control remoto nativo
-- ⭐ Sistema de favoritos
-- 🔍 Búsqueda de canales
-- 🎨 Interfaz moderna tipo Netflix
+### Control Remoto / Teclado
+- **↑ ↓ ← →** Navegar entre canales
+- **Enter/OK** Reproducir canal
+- **Back/Escape** Volver al menú
+
+### Touch/Mouse
+- **Click** en cualquier canal para reproducir
 
 ## 🚀 Instalación
 
@@ -30,79 +38,74 @@ npm install
 npm start
 ```
 
-La aplicación estará disponible en `http://localhost:3000`
+Abre `http://localhost:3000` en tu navegador o TV Box.
 
 ## 📦 Deploy
 
-Esta app está lista para ser desplegada en:
-- **Railway** (recomendado)
-- Heroku
-- Vercel
-- Netlify
-
-### Deploy en Railway
-
-1. Fork o clona este repositorio
-2. Crea una cuenta en [Railway](https://railway.app)
-3. Nuevo proyecto → Deploy from GitHub
+### Railway (Recomendado)
+1. Fork este repo
+2. Crea cuenta en [Railway](https://railway.app)
+3. New Project → Deploy from GitHub
 4. Selecciona el repo
-5. Railway detecta automáticamente Node.js
+5. Deploy automático
 
-## 📱 Instalar en Android TV
+### Otras plataformas
+Compatible con: Heroku, Vercel, Netlify, Render
 
-### Opción 1: Navegador
-1. Abre Chrome en Android TV
-2. Navega a tu app deployada
-3. Acepta "Agregar a pantalla de inicio"
-4. La app se instala como PWA
+## 📱 Instalar en TV Box
 
-### Opción 2: PWABuilder (APK)
+### Método 1: Navegador
+1. Abre Chrome en tu TV Box
+2. Visita la URL de tu app
+3. Agrega a pantalla de inicio
+4. Listo! Se ejecuta en fullscreen
+
+### Método 2: APK con PWABuilder
 1. Visita [pwabuilder.com](https://pwabuilder.com)
 2. Ingresa la URL de tu app
-3. Descarga el APK Android
-4. Instala vía ADB o USB
+3. Genera y descarga APK
+4. Instala en TV Box
 
 ```bash
-adb connect TU_TV_IP:5555
+# Con ADB
+adb connect IP_DE_TU_TV:5555
 adb install criollotv.apk
 ```
 
-## 🎮 Controles
-
-### Control Remoto / Teclado
-- **↑↓←→** Navegar entre canales
-- **Enter/OK** Reproducir canal
-- **Back/Escape** Volver
-- **F** Agregar/quitar favorito
-- **R** Búsqueda
-
-### Touch/Mouse
-- **Click** Reproducir canal
-- **Long Press** Agregar/quitar favorito
-
 ## 🛠️ Tecnologías
 
-- Node.js + Express
-- Vanilla JavaScript
+- Node.js + Express (backend)
+- Vanilla JavaScript (frontend)
+- CSS moderno (diseño minimalista)
 - PWA (Progressive Web App)
-- CSS moderno con animaciones
 
-## 📝 Agregar más canales
+## ➕ Agregar más canales
 
-Edita el array `channels` en `server.js`:
+Edita `server.js`:
 
-```js
+```javascript
 {
   id: 9,
   category: "Noticias",
-  name: "Mi Canal",
-  description: "Descripción del canal",
-  logo: "https://url-del-logo.png",
-  streamUrl: "https://url-del-stream/",
+  name: "Nuevo Canal",
+  description: "Descripción",
+  logo: "https://url-logo.png",
+  streamUrl: "https://url-stream/",
   color: "#ff0000"
 }
 ```
 
+## 📝 Notas
+
+- Los streams vienen de 5900.tv (sin bloqueos)
+- Diseño responsive: funciona en TV, desktop y móvil
+- PWA cachea el shell para uso offline
+- Optimizado para controles de TV Box
+
 ## 📄 Licencia
 
 MIT
+
+---
+
+**Hecho para disfrutar TV argentina 🇦🇷**

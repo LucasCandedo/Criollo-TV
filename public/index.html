@@ -2,90 +2,37 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
-  <meta name="theme-color" content="#141414">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#000000">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
   <title>CriolloTV</title>
   <link rel="manifest" href="/manifest.json">
   <link rel="stylesheet" href="/style.css">
 </head>
 <body>
   <!-- HEADER -->
-  <header id="app-header">
-    <div class="header-logo">
-      <img src="/icons/criollo-logo.png" alt="CriolloTV" style="height: 40px; object-fit: contain;">
-    </div>
-    <nav class="header-nav">
-      <button class="nav-btn active" data-cat="all">Inicio</button>
-      <button class="nav-btn" data-cat="Noticias">Noticias</button>
-    </nav>
-    <div class="header-right">
-      <span class="live-badge">● EN VIVO</span>
-    </div>
+  <header id="header">
+    <img src="/icons/criollo-logo.png" alt="CriolloTV" class="logo">
+    <span class="live-indicator">● EN VIVO</span>
   </header>
 
-  <!-- MAIN CONTENT -->
-  <main id="app-main">
-    <!-- HERO / FEATURED -->
-    <section id="hero-section">
-      <div id="hero-bg"></div>
-      <div id="hero-info">
-        <div id="hero-channel-logo"></div>
-        <h1 id="hero-title">CriolloTV</h1>
-        <p id="hero-desc">Seleccioná un canal y mirá la transmisión en vivo</p>
-        <div class="hero-buttons">
-          <button id="hero-play-btn" class="btn-play focusable">▶ Ver Ahora</button>
-          <button id="hero-info-btn" class="btn-info focusable">ℹ Info</button>
-        </div>
-      </div>
-    </section>
-
-    <!-- CHANNEL ROWS -->
-    <div id="channel-rows"></div>
+  <!-- MAIN VIEW -->
+  <main id="main-view">
+    <h2 class="section-title">Canales de Noticias</h2>
+    <div id="channels-grid"></div>
   </main>
 
-  <!-- PLAYER OVERLAY -->
-  <div id="player-overlay" class="hidden">
+  <!-- PLAYER VIEW -->
+  <div id="player-view" class="hidden">
     <div id="player-header">
-      <button id="player-back" class="focusable">← Volver</button>
-      <span id="player-title"></span>
-      <span class="live-badge">● EN VIVO</span>
+      <button id="back-btn">← Volver</button>
+      <span id="player-channel-name"></span>
+      <span class="live-indicator">● EN VIVO</span>
     </div>
-    <div id="player-container">
-      <div id="player-loading">
-        <div class="spinner"></div>
-        <p>Cargando transmisión...</p>
-      </div>
-      <iframe
-        id="yt-player"
-        src=""
-        frameborder="0"
-        allowfullscreen
-        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-      ></iframe>
+    <div id="player-wrapper">
+      <iframe id="player-frame" allowfullscreen allow="autoplay"></iframe>
     </div>
-    <div id="player-info-bar">
-      <div id="player-channel-name"></div>
-      <div id="player-channel-desc"></div>
-    </div>
-  </div>
-
-  <!-- SEARCH OVERLAY -->
-  <div id="search-overlay" class="hidden">
-    <div id="search-box">
-      <input type="text" id="search-input" placeholder="Buscar canal..." autocomplete="off">
-      <button id="search-close">✕</button>
-    </div>
-    <div id="search-results"></div>
-  </div>
-
-  <!-- BOTTOM NAV (for TV remote) -->
-  <div id="bottom-nav">
-    <button class="bottom-btn focusable" id="btn-home">🏠 Inicio</button>
-    <button class="bottom-btn focusable" id="btn-search">🔍 Buscar</button>
-    <button class="bottom-btn focusable" id="btn-favorites">⭐ Favoritos</button>
   </div>
 
   <script src="/app.js"></script>
